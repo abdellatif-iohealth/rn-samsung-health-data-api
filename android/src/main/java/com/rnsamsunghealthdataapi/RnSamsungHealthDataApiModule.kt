@@ -30,7 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.Duration
 
-class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
+class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
  private lateinit var mStore: HealthDataStore
@@ -67,7 +67,7 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
         }
 
         val grantedPermissions = mStore.getGrantedPermissions(permSet)
-        
+
         val response = Arguments.createMap()
         val deniedArray = Arguments.createArray()
 
@@ -94,7 +94,7 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
       return
     }
 
-    val currentActivity = currentActivity ?: run {
+    val currentActivity = reactContext.currentActivity ?: run {
       promise.reject("ACTIVITY_MISSING", "Activity is required for permission request")
       return
     }
@@ -122,7 +122,7 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
                 .forEach { deniedArray.pushString(getStringFromDataType(it.dataType)) }
             response.putArray("deniedPermissions", deniedArray)
         }
-        
+
         promise.resolve(response)
       } catch (e: Exception) {
         promise.reject("PERMISSION_ERROR", "Error checking Samsung Health permissions", e)
@@ -145,11 +145,11 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
       return
     }
 
-    val currentActivity = currentActivity ?: run {
+    val currentActivity = reactContext.currentActivity ?: run {
       promise.reject("ACTIVITY_MISSING", "Activity is required for permission request")
       return
     }
-    
+
     try {
       val localtimeFilter = when(operator) {
         "between" -> {
@@ -191,10 +191,10 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
         "monthly" -> LocalTimeGroup.of(LocalTimeGroupUnit.MONTHLY, gap)
         else -> LocalTimeGroup.of(LocalTimeGroupUnit.HOURLY, gap)
       }
-      
+
       val aggregateRequest = if (ascendingOrder != null) {
         val ordering = if(ascendingOrder) { Ordering.ASC } else { Ordering.DESC }
-        
+
         DataType.StepsType.TOTAL.requestBuilder
           .setLocalTimeFilterWithGroup(localtimeFilter, localTimeGroup)
           .setOrdering(ordering)
@@ -204,14 +204,14 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
           .setLocalTimeFilterWithGroup(localtimeFilter, localTimeGroup)
           .build()
       }
-      
+
       coroutineScope.launch {
         try {
           val result = mStore.aggregateData(aggregateRequest)
 
           var totalSteps: Long = 0
           val hourlyData = Arguments.createArray()
-        
+
           result.dataList.forEach { stepData ->
             val hourlySteps = stepData.value as Long
             totalSteps += hourlySteps
@@ -235,7 +235,7 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
       promise.reject("DATE_PARSING_ERROR", "Error parsing date strings", e)
     }
   }
-  
+
   @ReactMethod
   fun readSleepData(
     operator: String,
@@ -248,7 +248,7 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
       return
     }
 
-    val currentActivity = currentActivity ?: run {
+    val currentActivity = reactContext.currentActivity ?: run {
       promise.reject("ACTIVITY_MISSING", "Activity is required for permission request")
       return
     }
@@ -300,14 +300,14 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
           var totalDurationInHours: Int = 0
           var totalDurationInMinutes: Int = 0
           val sleepResult = Arguments.createArray()
-        
+
           result.dataList.forEach { sleepData ->
             val score: Int
             score = prepareSleepScore(sleepData) ?: 0
 
             val duration = sleepData.getValue(DataType.SleepType.DURATION) ?: Duration.ZERO
             val sleepSessionList = sleepData.getValue(DataType.SleepType.SESSIONS) ?: emptyList()
-            
+
             totalDurationInHours += duration.toHours().toInt()
             totalDurationInMinutes += duration.toMinutes().toInt()
 
@@ -315,10 +315,10 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
             entry.putDouble("score", score.toDouble())
             entry.putDouble("sessionCount", sleepSessionList.size.toDouble())
             entry.putDouble("durationHours", duration.toHours().toDouble())
-            entry.putDouble("durationMinutes", duration.minusHours(duration.toHours()).toMinutes().toDouble()) 
+            entry.putDouble("durationMinutes", duration.minusHours(duration.toHours()).toMinutes().toDouble())
             entry.putString("startTime", sleepData.startTime.toString())
             entry.putString("endTime", sleepData.endTime.toString())
-           
+
             sleepResult.pushMap(entry)
           }
 
@@ -349,11 +349,11 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
       return
     }
 
-    val currentActivity = currentActivity ?: run {
+    val currentActivity = reactContext.currentActivity ?: run {
       promise.reject("ACTIVITY_MISSING", "Activity is required for permission request")
       return
     }
-    
+
     try {
       val localTimeFilter = when(operator) {
         "between" -> {
@@ -389,10 +389,10 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
           return
         }
       }
-      
+
       val readRequest = if (ascendingOrder != null) {
         val ordering = if(ascendingOrder) { Ordering.ASC } else { Ordering.DESC }
-        
+
         DataTypes.HEART_RATE.readDataRequestBuilder
           .setLocalTimeFilter(localTimeFilter)
           .setOrdering(ordering)
@@ -402,7 +402,7 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
           .setLocalTimeFilter(localTimeFilter)
           .build()
       }
-      
+
       coroutineScope.launch {
         try {
           val result = mStore.readData(readRequest)
@@ -424,8 +424,8 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
 
             entry.putString("startTime", startTime.toString())
             entry.putString("endTime", endTime.toString())
-            
-            heartRateResult.pushMap(entry)  
+
+            heartRateResult.pushMap(entry)
           }
 
           val response = Arguments.createMap()
@@ -444,18 +444,18 @@ class RnSamsungHealthDataApiModule(reactContext: ReactApplicationContext) :
   // Private utils method-------------------------------------------------------------
   private fun createPermissionSet(permissions: ReadableArray): Set<Permission> {
     val permSet = mutableSetOf<Permission>()
-    
+
     for (i in 0 until permissions.size()) {
       val permString = permissions.getString(i)
       val dataType = getDataTypeFromString(permString)
-      
+
       if (dataType != null) {
         permSet.add(Permission.of(dataType, AccessType.READ))
       } else {
         Log.w(APP_TAG, "Unknown permission type: $permString")
       }
     }
-    
+
     return permSet
   }
 
