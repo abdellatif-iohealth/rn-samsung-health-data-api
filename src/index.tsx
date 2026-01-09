@@ -4,6 +4,8 @@ import type {
   PermissionResult,
   SleepData,
   StepsData,
+  ActiveTimeData,
+  ActiveCaloriesData,
 } from './results.types';
 import type {
   HealthDataType,
@@ -20,13 +22,13 @@ const LINKING_ERROR =
 const RnSamsungHealthDataApi = NativeModules.RnSamsungHealthDataApi
   ? NativeModules.RnSamsungHealthDataApi
   : new Proxy(
-      {},
-      {
-        get() {
-          throw new Error(LINKING_ERROR);
-        },
-      }
-    );
+    {},
+    {
+      get() {
+        throw new Error(LINKING_ERROR);
+      },
+    }
+  );
 
 // Define health data functions
 export function initializeHealthStore(): Promise<boolean> {
@@ -123,6 +125,68 @@ export function readHeartRateData(
     operator,
     startDate,
     endDate,
+
     ascendingOrder
   );
 }
+
+export function readActiveTimeData(
+  option: ReadRecordsOptions
+): Promise<ActiveTimeData> {
+  const { timeRangeFilter, ascendingOrder } = option;
+  const { operator } = timeRangeFilter;
+
+  // Handle the properties based on operator type
+  let startDate: string | undefined;
+  let endDate: string | undefined;
+
+  if (operator === 'between') {
+    startDate = (timeRangeFilter as { startTime: string }).startTime;
+    endDate = (timeRangeFilter as { endTime: string }).endTime;
+  } else if (operator === 'after') {
+    startDate = (timeRangeFilter as { startTime: string }).startTime;
+    endDate = undefined;
+  } else if (operator === 'before') {
+    startDate = undefined;
+    endDate = (timeRangeFilter as { endTime: string }).endTime;
+  }
+
+  // Convert your operator names to the ones used in Kotlin
+  return RnSamsungHealthDataApi.readActiveTimeData(
+    operator,
+    startDate,
+    endDate,
+    ascendingOrder
+  );
+}
+
+export function readActiveCaloriesData(
+  option: ReadRecordsOptions
+): Promise<ActiveCaloriesData> {
+  const { timeRangeFilter, ascendingOrder } = option;
+  const { operator } = timeRangeFilter;
+
+  // Handle the properties based on operator type
+  let startDate: string | undefined;
+  let endDate: string | undefined;
+
+  if (operator === 'between') {
+    startDate = (timeRangeFilter as { startTime: string }).startTime;
+    endDate = (timeRangeFilter as { endTime: string }).endTime;
+  } else if (operator === 'after') {
+    startDate = (timeRangeFilter as { startTime: string }).startTime;
+    endDate = undefined;
+  } else if (operator === 'before') {
+    startDate = undefined;
+    endDate = (timeRangeFilter as { endTime: string }).endTime;
+  }
+
+  // Convert your operator names to the ones used in Kotlin
+  return RnSamsungHealthDataApi.readActiveCaloriesData(
+    operator,
+    startDate,
+    endDate,
+    ascendingOrder
+  );
+}
+

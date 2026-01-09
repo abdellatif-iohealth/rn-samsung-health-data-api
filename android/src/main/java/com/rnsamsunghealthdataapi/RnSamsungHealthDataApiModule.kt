@@ -29,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.Duration
+import java.time.ZoneId
 
 class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
@@ -151,40 +152,7 @@ class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationCon
     }
 
     try {
-      val localtimeFilter = when(operator) {
-        "between" -> {
-          if (startDate == null || endDate == null) {
-            promise.reject("INVALID_DATES", "Both startDate and endDate are required for 'between'")
-            return
-          }
-
-          val startDateTime = ZonedDateTime.parse(startDate).toLocalDateTime()
-          val endDateTime = ZonedDateTime.parse(endDate).toLocalDateTime()
-          LocalTimeFilter.of(startDateTime, endDateTime)
-        }
-        "after" -> {
-          if (startDate == null) {
-            promise.reject("INVALID_DATES", "StartDate is required for 'after'")
-            return
-          }
-
-          val startDateTime = ZonedDateTime.parse(startDate).toLocalDateTime()
-          LocalTimeFilter.since(startDateTime)
-        }
-        "before" -> {
-           if (endDate == null) {
-            promise.reject("INVALID_DATES", "EndDate is required for 'before'")
-            return
-          }
-
-          val endDateTime = ZonedDateTime.parse(endDate).toLocalDateTime()
-          LocalTimeFilter.to(endDateTime)
-        }
-        else -> {
-          promise.reject("INVALID_OPERATOR", "Unsupported operator: $operator")
-          return
-        }
-      }
+      val localtimeFilter = createLocalTimeFilter(operator, startDate, endDate, promise) ?: return
 
       val localTimeGroup = when(groupBy) {
         "daily" -> LocalTimeGroup.of(LocalTimeGroupUnit.DAILY, gap)
@@ -254,40 +222,7 @@ class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationCon
     }
 
     try {
-      val localTimeFilter = when(operator) {
-        "between" -> {
-          if (startDate == null || endDate == null) {
-            promise.reject("INVALID_DATES", "Both startDate and endDate are required for 'between'")
-            return
-          }
-
-          val startDateTime = ZonedDateTime.parse(startDate).toLocalDate()
-          val endDateTime = ZonedDateTime.parse(endDate).toLocalDate()
-          LocalTimeFilter.of(startDateTime.atStartOfDay(), endDateTime.atStartOfDay())
-        }
-        "after" -> {
-          if (startDate == null) {
-            promise.reject("INVALID_DATES", "StartDate is required for 'after'")
-            return
-          }
-
-          val startDateTime = ZonedDateTime.parse(startDate).toLocalDate()
-          LocalTimeFilter.since(startDateTime.atStartOfDay())
-        }
-        "before" -> {
-          if (endDate == null) {
-            promise.reject("INVALID_DATES", "EndDate is required for 'before'")
-            return
-          }
-
-          val endDateTime = ZonedDateTime.parse(endDate).toLocalDate()
-          LocalTimeFilter.to(endDateTime.atStartOfDay())
-        }
-        else -> {
-          promise.reject("INVALID_OPERATOR", "Unsupported operator: $operator")
-          return
-        }
-      }
+      val localTimeFilter = createLocalTimeFilter(operator, startDate, endDate, promise) ?: return
 
       val readRequest = DataTypes.SLEEP.readDataRequestBuilder
         .setLocalTimeFilter(localTimeFilter)
@@ -355,40 +290,7 @@ class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationCon
     }
 
     try {
-      val localTimeFilter = when(operator) {
-        "between" -> {
-          if (startDate == null || endDate == null) {
-            promise.reject("INVALID_DATES", "Both startDate and endDate are required for 'between'")
-            return
-          }
-
-          val startDateTime = ZonedDateTime.parse(startDate).toLocalDateTime()
-          val endDateTime = ZonedDateTime.parse(endDate).toLocalDateTime()
-          LocalTimeFilter.of(startDateTime, endDateTime)
-        }
-        "after" -> {
-          if (startDate == null) {
-            promise.reject("INVALID_DATES", "StartDate is required for 'after'")
-            return
-          }
-
-          val startDateTime = ZonedDateTime.parse(startDate).toLocalDateTime()
-          LocalTimeFilter.since(startDateTime)
-        }
-        "before" -> {
-           if (endDate == null) {
-            promise.reject("INVALID_DATES", "EndDate is required for 'before'")
-            return
-          }
-
-          val endDateTime = ZonedDateTime.parse(endDate).toLocalDateTime()
-          LocalTimeFilter.to(endDateTime)
-        }
-        else -> {
-          promise.reject("INVALID_OPERATOR", "Unsupported operator: $operator")
-          return
-        }
-      }
+      val localTimeFilter = createLocalTimeFilter(operator, startDate, endDate, promise) ?: return
 
       val readRequest = if (ascendingOrder != null) {
         val ordering = if(ascendingOrder) { Ordering.ASC } else { Ordering.DESC }
@@ -441,6 +343,133 @@ class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationCon
     }
   }
 
+  @ReactMethod
+  fun readActiveTimeData(
+    operator: String,
+    startDate: String?,
+    endDate: String?,
+    ascendingOrder: Boolean?,
+    promise: Promise
+  ) {
+     if (!::mStore.isInitialized) {
+      promise.reject("NOT_INITIALIZED", "Health data store is not initialized")
+      return
+    }
+
+    val currentActivity = reactContext.currentActivity ?: run {
+      promise.reject("ACTIVITY_MISSING", "Activity is required for permission request")
+      return
+    }
+
+    try {
+      val localTimeFilter = createLocalTimeFilter(operator, startDate, endDate, promise) ?: return
+
+      // Use TOTAL_ACTIVE_TIME aggregate
+      // Assuming DataType.ActivitySummaryType.TOTAL_ACTIVE_TIME exists
+      val aggregateRequest = if (ascendingOrder != null) {
+        val ordering = if(ascendingOrder) { Ordering.ASC } else { Ordering.DESC }
+        
+        DataType.ActivitySummaryType.TOTAL_ACTIVE_TIME.requestBuilder
+          .setLocalTimeFilter(localTimeFilter)
+          .setOrdering(ordering)
+          .build()
+      } else {
+        DataType.ActivitySummaryType.TOTAL_ACTIVE_TIME.requestBuilder
+          .setLocalTimeFilter(localTimeFilter)
+          .build()
+      }
+
+      coroutineScope.launch {
+        try {
+          val result = mStore.aggregateData(aggregateRequest)
+          val resultList = Arguments.createArray()
+
+          result.dataList.forEach { data ->
+             // Corrected access based on user feedback to use data.value directly
+             val timeValue = (data.value as Duration).seconds
+             
+             val entry = Arguments.createMap()
+             entry.putDouble("time", timeValue.toDouble())
+             entry.putString("startTime", data.startTime.toString())
+             entry.putString("endTime", data.endTime.toString())
+             resultList.pushMap(entry)
+          }
+
+          val response = Arguments.createMap()
+          response.putArray("data", resultList)
+          promise.resolve(response)
+        } catch (e: Exception) {
+          promise.reject("READING_ERROR", "Error reading Active Time Data", e)
+        }
+      }
+    } catch (e: Exception) {
+      promise.reject("DATE_PARSING_ERROR", "Error parsing date strings", e)
+    }
+  }
+
+  @ReactMethod
+  fun readActiveCaloriesData(
+    operator: String,
+    startDate: String?,
+    endDate: String?,
+    ascendingOrder: Boolean?,
+    promise: Promise
+  ) {
+     if (!::mStore.isInitialized) {
+      promise.reject("NOT_INITIALIZED", "Health data store is not initialized")
+      return
+    }
+
+    val currentActivity = reactContext.currentActivity ?: run {
+      promise.reject("ACTIVITY_MISSING", "Activity is required for permission request")
+      return
+    }
+
+    try {
+      val localTimeFilter = createLocalTimeFilter(operator, startDate, endDate, promise) ?: return
+
+      val aggregateRequest = if (ascendingOrder != null) {
+        val ordering = if(ascendingOrder) { Ordering.ASC } else { Ordering.DESC }
+        
+        DataType.ActivitySummaryType.TOTAL_ACTIVE_CALORIES_BURNED.requestBuilder
+          .setLocalTimeFilter(localTimeFilter)
+          .setOrdering(ordering)
+          .build()
+      } else {
+        DataType.ActivitySummaryType.TOTAL_ACTIVE_CALORIES_BURNED.requestBuilder
+          .setLocalTimeFilter(localTimeFilter)
+          .build()
+      }
+
+      coroutineScope.launch {
+        try {
+          val result = mStore.aggregateData(aggregateRequest)
+          val resultList = Arguments.createArray()
+
+          result.dataList.forEach { data ->
+             val caloriesValue = data.value as Float
+             
+             val entry = Arguments.createMap()
+             entry.putDouble("calories", caloriesValue.toDouble())
+             entry.putString("startTime", data.startTime.toString())
+             entry.putString("endTime", data.endTime.toString())
+             resultList.pushMap(entry)
+          }
+
+          val response = Arguments.createMap()
+          response.putArray("data", resultList)
+          promise.resolve(response)
+        } catch (e: Exception) {
+          promise.reject("READING_ERROR", "Error reading Active Calories Data", e)
+        }
+      }
+    } catch (e: Exception) {
+      promise.reject("DATE_PARSING_ERROR", "Error parsing date strings", e)
+    }
+  }
+
+
+
   // Private utils method-------------------------------------------------------------
   private fun createPermissionSet(permissions: ReadableArray): Set<Permission> {
     val permSet = mutableSetOf<Permission>()
@@ -464,6 +493,7 @@ class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationCon
       "STEPS" -> DataTypes.STEPS
       "SLEEP" -> DataTypes.SLEEP
       "HEART_RATE" -> DataTypes.HEART_RATE
+      "ACTIVITY_SUMMARY" -> DataTypes.ACTIVITY_SUMMARY
       else -> null
     }
   }
@@ -473,6 +503,7 @@ class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationCon
       DataTypes.STEPS -> "STEPS"
       DataTypes.SLEEP -> "SLEEP"
       DataTypes.HEART_RATE -> "HEART_RATE"
+      DataTypes.ACTIVITY_SUMMARY -> "ACTIVITY_SUMMARY"
       else -> dataType.toString()
     }
   }
@@ -482,6 +513,45 @@ class RnSamsungHealthDataApiModule(private val reactContext: ReactApplicationCon
     var sleepScore: Int? = null
     sleepScore = healthDataPoint.getValue(DataType.SleepType.SLEEP_SCORE)
     return sleepScore
+  }
+
+  private fun createLocalTimeFilter(
+    operator: String,
+    startDate: String?,
+    endDate: String?,
+    promise: Promise
+  ): LocalTimeFilter? {
+    return when(operator) {
+      "between" -> {
+        if (startDate == null || endDate == null) {
+          promise.reject("INVALID_DATES", "Both startDate and endDate are required for 'between'")
+          return null
+        }
+        val startDateTime = ZonedDateTime.parse(startDate).withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime()
+        val endDateTime = ZonedDateTime.parse(endDate).withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime()
+        LocalTimeFilter.of(startDateTime, endDateTime)
+      }
+      "after" -> {
+        if (startDate == null) {
+          promise.reject("INVALID_DATES", "StartDate is required for 'after'")
+          return null
+        }
+        val startDateTime = ZonedDateTime.parse(startDate).withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime()
+        LocalTimeFilter.since(startDateTime)
+      }
+      "before" -> {
+          if (endDate == null) {
+          promise.reject("INVALID_DATES", "EndDate is required for 'before'")
+          return null
+        }
+        val endDateTime = ZonedDateTime.parse(endDate).withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime()
+        LocalTimeFilter.to(endDateTime)
+      }
+      else -> {
+        promise.reject("INVALID_OPERATOR", "Unsupported operator: $operator")
+        return null
+      }
+    }
   }
 
   companion object {

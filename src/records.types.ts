@@ -1,4 +1,4 @@
-export type HealthDataType = 'STEPS' | 'SLEEP' | 'HEART_RATE';
+export type HealthDataType = 'STEPS' | 'SLEEP' | 'HEART_RATE' | 'ACTIVITY_SUMMARY';
 
 export type HealthDataGap = 'hourly' | 'daily' | 'monthly';
 

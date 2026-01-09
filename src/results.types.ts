@@ -43,3 +43,24 @@ export interface HeartRateRecord {
   startTime: string;
   endTime: string;
 }
+
+export interface ActiveTimeData {
+  data: ActiveTimeRecord[];
+}
+
+export interface ActiveTimeRecord {
+  time: number;
+  startTime: string;
+  endTime: string;
+}
+
+export interface ActiveCaloriesData {
+  data: ActiveCaloriesRecord[];
+}
+
+export interface ActiveCaloriesRecord {
+  calories: number;
+  startTime: string;
+  endTime: string;
+}
+
