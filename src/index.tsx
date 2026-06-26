@@ -190,3 +190,16 @@ export function readActiveCaloriesData(
   );
 }
 
+export type {
+  HeartRateData,
+  PermissionResult,
+  SleepData,
+  StepsData,
+  ActiveTimeData,
+  ActiveCaloriesData,
+} from './results.types';
+export type {
+  HealthDataType,
+  ReadRecordsOptions,
+  TimeRangeFilter,
+} from './records.types';
